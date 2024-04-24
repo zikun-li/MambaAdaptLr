@@ -2,37 +2,38 @@ from datasets import load_dataset
 from trl import SFTTrainer
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments
 from torch.optim import Adam, SGD
+import torch
 import argparse
 import wandb
 import os
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-d', '--dataset', type=str, required=True, default="lukaemon/mmlu",
-                        help='Path to the dataset')
-parser.add_argument('--adapt_lr', type=bool, required=True, default=False,
+parser.add_argument('-a', '--adapt_lr',  action="store_true", default=False,
                         help='A boolean to adapt learning rate')
-parser.add_argument('-s', '--sqrt', type=bool, required=True, default=False,
+parser.add_argument('-s', '--sqrt',  action="store_true", default=False,
                         help='Sqrt the scale of learning rate')
+parser.add_argument('-g', '--gpu',  type=str, required=True, default='0',
+                        help='The gpu to use to train the model')
 # Parse the arguments
 args = parser.parse_args()
 
-# wandb.init(project="mamba-adapt-lr")
 os.environ["WANDB_PROJECT"] = "mamba-adapt-lr"
+os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 
-def main(dataset: str, adapt_lr: bool, sqrt: bool):
+def main(adapt_lr: bool, sqrt: bool):
     tokenizer = AutoTokenizer.from_pretrained("state-spaces/mamba-370m-hf")
     model = AutoModelForCausalLM.from_pretrained("state-spaces/mamba-370m-hf")
-    dataset = load_dataset(dataset, split="train")
+    dataset = load_dataset("HuggingFaceH4/ultrachat_200k", split="train_sft")
     training_args = TrainingArguments(
-        output_dir="./results",
+        output_dir=f"./results_adapt_lr={adapt_lr}_sqrt={sqrt}",
         num_train_epochs=3,
-        per_device_train_batch_size=4,
-        logging_dir="./logs",
+        per_device_train_batch_size=12,
+        logging_dir=f"./logs_adapt_lr={adapt_lr}_sqrt={sqrt}",
         logging_steps=10,
         # learning_rate=2e-3,
         lr_scheduler_type='linear', # 'constant', 'constant_with_warmup'
         report_to='wandb',
-        run_name=f'mamba-370m-hf_{dataset}_adapt_lr={adapt_lr}_sqrt={sqrt}',
+        run_name=f'mamba-370m-hf_adapt_lr={adapt_lr}_sqrt={sqrt}',
     )
 
 
@@ -110,14 +111,18 @@ def main(dataset: str, adapt_lr: bool, sqrt: bool):
     else:
         optimizer = Adam(model.parameters(), lr=2e-3)
 
+    # device = torch.device("cuda:0")
+
     trainer = SFTTrainer(
         model=model,
         tokenizer=tokenizer,
         args=training_args,
         train_dataset=dataset,
-        dataset_text_field="quote",
+        # dataset_text_field="quote",
         optimizers=(optimizer, None),
     )
+
+    # model.to(device)
     trainer.train()
 
-main(args.dataset, args.adapt_lr, args.sqrt)
+main(args.adapt_lr, args.sqrt)

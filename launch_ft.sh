@@ -1,4 +1,4 @@
 #!/bin/bash
-python ft.py --dataset "lukaemon/mmlu" --adapt_lr --sqrt &
-python ft.py --dataset "lukaemon/mmlu" --adapt_lr &
-python ft.py --dataset "lukaemon/mmlu" &
+python ft.py --adapt_lr --sqrt --gpu 5 &
+python ft.py --adapt_lr --gpu 6 &
+python ft.py --gpu 7 &
