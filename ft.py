@@ -11,11 +11,15 @@ parser.add_argument('-d', '--dataset', type=str, required=True, default="lukaemo
                         help='Path to the dataset')
 parser.add_argument('--adapt_lr', type=bool, required=True, default=False,
                         help='A boolean to adapt learning rate')
+parser.add_argument('-s', '--sqrt', type=bool, required=True, default=False,
+                        help='Sqrt the scale of learning rate')
+# Parse the arguments
+args = parser.parse_args()
 
 # wandb.init(project="mamba-adapt-lr")
 os.environ["WANDB_PROJECT"] = "mamba-adapt-lr"
 
-def main(dataset: str = "Abirate/english_quotes", adapt_lr: bool = False):
+def main(dataset: str, adapt_lr: bool, sqrt: bool):
     tokenizer = AutoTokenizer.from_pretrained("state-spaces/mamba-370m-hf")
     model = AutoModelForCausalLM.from_pretrained("state-spaces/mamba-370m-hf")
     dataset = load_dataset(dataset, split="train")
@@ -28,7 +32,7 @@ def main(dataset: str = "Abirate/english_quotes", adapt_lr: bool = False):
         # learning_rate=2e-3,
         lr_scheduler_type='linear', # 'constant', 'constant_with_warmup'
         report_to='wandb',
-        run_name=f'mamba-370m-hf_{dataset}_adapt_lr={adapt_lr}',
+        run_name=f'mamba-370m-hf_{dataset}_adapt_lr={adapt_lr}_sqrt={sqrt}',
     )
 
 
@@ -73,19 +77,36 @@ def main(dataset: str = "Abirate/english_quotes", adapt_lr: bool = False):
                 out_proj_weight.append(param)
             else:
                 other.append(param)
-
-        optimizer = Adam([
-            {'params': A_log, 'lr': lr / d_state},
-            {'params': D, 'lr': lr},
-            {'params': conv1d_weight, 'lr': lr / conv_kernel / d_inner},
-            {'params': conv1d_bias, 'lr': lr},
-            {'params': in_proj_weight, 'lr': lr / d_model},
-            {'params': x_proj_weight, 'lr': lr / d_inner },
-            {'params': dt_proj_weight, 'lr': lr / dt_rank},
-            {'params': dt_proj_bias, 'lr': lr },
-            {'params': out_proj_weight, 'lr': lr / d_inner},
-            {'params': other, 'lr': lr},
-        ])
+        if sqrt:
+            # To make the geo mean of the highest and lowest learning rate equal to lr
+            lr *= (d_model ** 0.25)
+            optimizer = Adam([
+                {'params': A_log, 'lr': lr / d_state ** 0.5},
+                {'params': D, 'lr': lr},
+                {'params': conv1d_weight, 'lr': lr / (conv_kernel * d_inner) ** 0.5},
+                {'params': conv1d_bias, 'lr': lr},
+                {'params': in_proj_weight, 'lr': lr / d_model ** 0.5},
+                {'params': x_proj_weight, 'lr': lr / d_inner ** 0.5},
+                {'params': dt_proj_weight, 'lr': lr / dt_rank ** 0.5},
+                {'params': dt_proj_bias, 'lr': lr },
+                {'params': out_proj_weight, 'lr': lr / d_inner ** 0.5},
+                {'params': other, 'lr': lr},
+            ])
+        else:
+            # To make the geo mean of the highest and lowest learning rate equal to lr
+            lr *= (d_model ** 0.5)
+            optimizer = Adam([
+                {'params': A_log, 'lr': lr / d_state},
+                {'params': D, 'lr': lr},
+                {'params': conv1d_weight, 'lr': lr / conv_kernel / d_inner},
+                {'params': conv1d_bias, 'lr': lr},
+                {'params': in_proj_weight, 'lr': lr / d_model},
+                {'params': x_proj_weight, 'lr': lr / d_inner },
+                {'params': dt_proj_weight, 'lr': lr / dt_rank},
+                {'params': dt_proj_bias, 'lr': lr },
+                {'params': out_proj_weight, 'lr': lr / d_inner},
+                {'params': other, 'lr': lr},
+            ])
     else:
         optimizer = Adam(model.parameters(), lr=2e-3)
 
@@ -99,4 +120,4 @@ def main(dataset: str = "Abirate/english_quotes", adapt_lr: bool = False):
     )
     trainer.train()
 
-main()
+main(args.dataset, args.adapt_lr, args.sqrt)
