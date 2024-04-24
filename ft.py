@@ -4,12 +4,16 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments
 from torch.optim import Adam, SGD
 import argparse
 import wandb
+import os
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-d', '--dataset', type=str, required=True,
+parser.add_argument('-d', '--dataset', type=str, required=True, default="lukaemon/mmlu",
                         help='Path to the dataset')
-parser.add_argument('--adapt_lr', type=bool, required=True,
+parser.add_argument('--adapt_lr', type=bool, required=True, default=False,
                         help='A boolean to adapt learning rate')
+
+# wandb.init(project="mamba-adapt-lr")
+os.environ["WANDB_PROJECT"] = "mamba-adapt-lr"
 
 def main(dataset: str = "Abirate/english_quotes", adapt_lr: bool = False):
     tokenizer = AutoTokenizer.from_pretrained("state-spaces/mamba-370m-hf")
